@@ -1,0 +1,36 @@
+# ==========================================
+# Banco de dados local do Namigurumi
+# Garante que os dados dos clientes e pedidos não subam para o GitHub!
+# ==========================================
+*.csv
+
+# Se preferir ser específica em vez de ignorar todos os CSVs, 
+# pode apagar o "*.csv" acima e usar os nomes exatos:
+# clientes.csv
+# materiais.csv
+# pedidos.csv
+
+# ==========================================
+# Arquivos de cache do Python (gerados automaticamente)
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ==========================================
+# Ambientes Virtuais (caso você use um no futuro para instalar pacotes)
+# ==========================================
+venv/
+env/
+.venv/
+
+# ==========================================
+# Arquivos de configuração e segredos
+# ==========================================
+.env
+
+# ==========================================
+# Arquivos do Sistema Operacional (evita sujeira no repositório)
+# ==========================================
+.DS_Store
+Thumbs.db
