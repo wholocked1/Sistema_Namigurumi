@@ -1,4 +1,3 @@
-# modelos.py
 import uuid
 from datetime import datetime
 
@@ -19,21 +18,23 @@ class Material:
             return 0.0
         return self.preco_custo / self.rendimento_base
 
-
 class Cliente:
-    def __init__(self, nome, contato, id_cliente=None):
+    def __init__(self, nome, contato, endereco="", cidade="", estado="", cep="", id_cliente=None):
         self.id_cliente = id_cliente if id_cliente else f"CLI-{str(uuid.uuid4())[:6].upper()}"
         self.nome = nome
         self.contato = contato
+        self.endereco = endereco
+        self.cidade = cidade
+        self.estado = estado
+        self.cep = cep
         self.historico_pedidos = []
 
-
 class Pattern:
-    def __init__(self, nome, skus_necessarios, quantidades_estimadas=None):
+    def __init__(self, nome, skus_necessarios, quantidades_estimadas=None, observacoes=""):
         self.nome = nome
         self.skus_necessarios = skus_necessarios
         self.quantidades_estimadas = quantidades_estimadas if quantidades_estimadas else {}
-
+        self.observacoes = observacoes
 
 class Pedido:
     def __init__(self, cliente, pattern, id_pedido=None):
