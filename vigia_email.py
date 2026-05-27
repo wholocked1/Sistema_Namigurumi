@@ -1,11 +1,13 @@
-import time
 import os
+import time
 import imaplib
 import smtplib
 import email
 from email.mime.text import MIMEText
 from database import DatabaseCSV
+from dotenv import load_dotenv
 
+load_dotenv()
 # ==========================================
 # CONFIGURAÇÕES DO SEU E-MAIL
 # ==========================================
