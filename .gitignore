@@ -3,6 +3,7 @@
 # Garante que os dados dos clientes e pedidos não subam para o GitHub!
 # ==========================================
 *.csv
+.env
 
 # Se preferir ser específica em vez de ignorar todos os CSVs, 
 # pode apagar o "*.csv" acima e usar os nomes exatos:
