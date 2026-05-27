@@ -37,36 +37,42 @@ class Pattern:
         self.observacoes = observacoes
 
 class Pedido:
-    def __init__(self, cliente, pattern, id_pedido=None):
+    # Adicionado o preco_venda aqui!
+    def __init__(self, cliente, pattern, preco_venda=0.0, id_pedido=None):
         self.id_pedido = id_pedido if id_pedido else f"PED-{str(uuid.uuid4())[:6].upper()}"
         self.cliente = cliente
         self.pattern = pattern
+        self.preco_venda = float(preco_venda)
         self.status = "Em espera"
         self.codigo_rastreio = None
-        self.peso_fio_inicial = 0.0
-        self.peso_fio_final = 0.0
+        self.pesos_iniciais = {} 
+        self.pesos_finais = {}
         self.data_criacao = datetime.now().strftime("%Y-%m-%d")
 
     def atualizar_rastreio(self, codigo):
         self.codigo_rastreio = codigo
 
-    def registrar_pesos(self, peso_inicial, peso_final):
-        self.peso_fio_inicial = float(peso_inicial)
-        self.peso_fio_final = float(peso_final)
+    def registrar_peso_fio(self, sku, peso_inicial, peso_final):
+        self.pesos_iniciais[sku] = float(peso_inicial)
+        self.pesos_finais[sku] = float(peso_final)
         self.status = "Finalizado"
 
-    def calcular_uso_fio(self):
-        return max(0.0, self.peso_fio_inicial - self.peso_fio_final)
+    def calcular_uso_fio(self, sku):
+        inicial = self.pesos_iniciais.get(sku, 0.0)
+        final = self.pesos_finais.get(sku, 0.0)
+        return max(0.0, inicial - final)
 
-    def calcular_custo_total_materiais(self, dicionario_materiais, sku_fio_principal):
+    def calcular_custo_total_materiais(self, dicionario_materiais):
         custo_total = 0.0
-        if sku_fio_principal in dicionario_materiais:
-            fio = dicionario_materiais[sku_fio_principal]
-            gramas_gastadas = self.calcular_uso_fio()
-            custo_total += gramas_gastadas * fio.obter_custo_unitario()
+        
+        for sku in self.pesos_iniciais.keys():
+            if sku in dicionario_materiais:
+                fio = dicionario_materiais[sku]
+                gramas_gastadas = self.calcular_uso_fio(sku)
+                custo_total += gramas_gastadas * fio.obter_custo_unitario()
         
         for sku, qtd_usada in self.pattern.quantidades_estimadas.items():
-            if sku in dicionario_materiais:
+            if sku not in self.pesos_iniciais and sku in dicionario_materiais:
                 material = dicionario_materiais[sku]
                 custo_total += qtd_usada * material.obter_custo_unitario()
                 
