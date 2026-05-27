@@ -27,5 +27,47 @@ Um sistema web completo desenvolvido em Python para o gerenciamento da loja de a
 
 ### 1. Clonar o repositório
 ```bash
-git clone [https://github.com/SEU_USUARIO/Sistema_Namigurumi.git](https://github.com/SEU_USUARIO/Sistema_Namigurumi.git)
-cd Sistema_Namigurumi
+git clone https://github.com/SEU_USUARIO/Sistema_Namigurumi.git
+cd Sistema_Namigurumi 
+```
+
+### 2. Instalar as dependências
+Certifique-se de instalar as bibliotecas necessárias para rodar a interface e ler as variáveis de ambiente:
+```bash
+pip install streamlit python-dotenv
+```
+
+### 3. Configurar Variáveis de Ambiente
+Crie um arquivo `.env` na raiz do projeto e adicione as suas credenciais do Gmail (lembre-se de usar uma "Senha de App" gerada no Google):
+
+```env
+EMAIL_BOT=seu_email@gmail.com
+SENHA_BOT=sua_senha_de_app
+```
+
+### 4. Rodar a Interface Web (Streamlit)
+No terminal, execute o comando abaixo para iniciar o painel de gestão:
+
+```bash
+python -m streamlit run app.py
+```
+
+### 5. Rodar o Robô Vigia (Opcional)
+Para habilitar a automação de lista de compras via e-mail, abra um **segundo terminal** na mesma pasta e rode:
+
+```bash
+python vigia_email.py
+```
+
+Envie um e-mail para si mesma com o assunto Ping Compras para receber o status do estoque no seu celular em até 60 segundos!
+## 📂 Estrutura de Arquivos
+
+* `app.py`: Interface web e rotas do Streamlit.
+* `modelos.py`: Definição das classes de objetos (`Cliente`, `Material`, `Pattern`, `Pedido`).
+* `database.py`: Lógica de persistência de dados (CRUD) em arquivos `.csv`.
+* `vigia_email.py`: Script do bot de monitoramento de e-mails via IMAP/SMTP.
+* `*.csv`: Arquivos atuando como banco de dados local da aplicação.
+
+---
+Desenvolvido por **Ana Carolina Cogo Nami** 💻
+
