@@ -60,6 +60,10 @@ python vigia_email.py
 ```
 
 Envie um e-mail para si mesma com o assunto Ping Compras para receber o status do estoque no seu celular em até 60 segundos!
+
+### 6. Colocar o logo do negócio (Opcional)
+Para ter seu logo na parte superior da página, coloque a imagem na mesma pasta que o projeto e coloque o nome dele de "logo.PNG". Quando recarregar a página, seu logo estará na parte superior esquerdo.
+
 ## 📂 Estrutura de Arquivos
 
 * `app.py`: Interface web e rotas do Streamlit.

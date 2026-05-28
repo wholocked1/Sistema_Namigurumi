@@ -1,9 +1,18 @@
 import streamlit as st
+import pandas as pd
 from database import DatabaseCSV
 from modelos import Cliente, Material, Pattern, Pedido
 
-st.set_page_config(page_title="Namigurumi System", page_icon="🧶", layout="wide")
+# ==========================================
+# CONFIGURAÇÃO DA PÁGINA
+# ==========================================
+st.set_page_config(
+    page_title="Namigurumi System", 
+    page_icon="🧶", 
+    layout="wide"
+)
 
+# Inicialização do Banco de Dados
 @st.cache_resource
 def carregar_db():
     return DatabaseCSV()
@@ -14,52 +23,165 @@ estoque = db.carregar_materiais()
 patterns = db.carregar_patterns()
 pedidos = db.carregar_pedidos(clientes, patterns)
 
-st.title("🧶 Sistema de Gestão Namigurumi")
-
-aba_clientes, aba_estoque, aba_patterns, aba_pedidos = st.tabs([
-    "👥 Clientes", "🧶 Estoque de Materiais", "📝 Patterns (Receitas)", "📦 Pedidos"
-])
 
 # ==========================================
-# ABA 1: CLIENTES
+# FUNÇÃO: ABA DE BI / ANALYTICS
 # ==========================================
-with aba_clientes:
+def renderizar_aba_bi():
+    st.title("📊 Business Intelligence & Analytics")
+    st.markdown("Acompanhe a saúde financeira e o desempenho operacional.")
+
+    if not pedidos:
+        st.info("Ainda não há pedidos finalizados para gerar análises estatísticas.")
+        return
+
+    # Filtra apenas os pedidos finalizados para calcular lucro real
+    pedidos_fin = [p for p in pedidos if p.status == "Finalizado"]
+    
+    if not pedidos_fin:
+        st.warning("Nenhum pedido foi finalizado ainda. Finalize um pedido para ver as métricas de lucro.")
+        return
+
+    # Tratamento dos dados para o Pandas
+    dados_pedidos = []
+    for p in pedidos_fin:
+        custo_final = p.calcular_custo_total_materiais(estoque)
+        lucro_liquido = p.preco_venda - custo_final
+        
+        dados_pedidos.append({
+            "id": p.id_pedido,
+            "cliente": p.cliente.nome,
+            "pattern": p.pattern.nome,
+            "valor_venda": p.preco_venda,
+            "custo": custo_final,
+            "lucro_liquido": lucro_liquido
+        })
+
+    df_pedidos = pd.DataFrame(dados_pedidos)
+
+    # Panorama Financeiro Geral
+    st.subheader("💰 Panorama Financeiro (Pedidos Finalizados)")
+    faturamento_total = df_pedidos["valor_venda"].sum()
+    lucro_total = df_pedidos["lucro_liquido"].sum()
+    margem_media = (lucro_total / faturamento_total) * 100 if faturamento_total > 0 else 0
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(label="Faturamento Total", value=f"R$ {faturamento_total:,.2f}")
+    with col2:
+        st.metric(label="Lucro Líquido Total", value=f"R$ {lucro_total:,.2f}")
+    with col3:
+        st.metric(label="Margem de Lucro Média", value=f"{margem_media:.1f}%")
+
+    st.markdown("---")
+
+    # Rankings (Lado a Lado)
+    col_esq, col_dir = st.columns(2)
+    with col_esq:
+        st.subheader("👥 Top Clientes (Faturamento)")
+        top_clientes = df_pedidos.groupby("cliente")["valor_venda"].sum().sort_values(ascending=True).tail(5)
+        st.bar_chart(top_clientes, horizontal=True)
+
+    with col_dir:
+        st.subheader("🧶 Top Patterns Mais Vendidos")
+        top_patterns = df_pedidos.groupby("pattern")["id"].count().sort_values(ascending=True).tail(5)
+        top_patterns.name = "Quantidade"
+        st.bar_chart(top_patterns, horizontal=True)
+
+    st.markdown("---")
+
+    # Mapa de Consumo
+    st.subheader("🎨 Mapa do Estoque (Fios Atuais)")
+    if estoque:
+        dados_materiais = [{"Nome": f"{m.nome} ({m.cor})", "Quantidade Disponível": m.quantidade} for m in estoque.values() if m.tipo.lower() == "fio"]
+        if dados_materiais:
+            df_materiais = pd.DataFrame(dados_materiais).set_index("Nome")
+            st.bar_chart(df_materiais["Quantidade Disponível"])
+        else:
+            st.info("Não há materiais do tipo 'Fio' cadastrados no estoque.")
+    else:
+        st.info("Não há materiais cadastrados no estoque.")
+
+
+# ==========================================
+# FUNÇÃO: ABA DE CLIENTES
+# ==========================================
+def renderizar_clientes():
+    st.title("👥 Cadastro de Clientes")
     col1, col2 = st.columns([1, 2]) 
     
     with col1:
-        st.subheader("Novo Cliente")
-        with st.form("form_cliente", clear_on_submit=True):
-            nome = st.text_input("Nome do Cliente*")
-            contato = st.text_input("Contato (Insta/WhatsApp)")
-            endereco = st.text_input("Endereço")
-            cidade = st.text_input("Cidade")
-            estado = st.text_input("Estado (Ex: SP)")
-            cep = st.text_input("CEP")
-            submit_cliente = st.form_submit_button("Salvar Cliente")
-            
-            if submit_cliente:
-                if not nome:
-                    st.error("O campo Nome é obrigatório!")
-                else:
-                    # Código corrigido: sem o "city="
-                    novo_c = Cliente(nome, contato, endereco, cidade, estado, cep)
-                    clientes.append(novo_c)
-                    db.salvar_clientes(clientes)
-                    st.success("Cliente salvo com sucesso!")
-                    st.rerun() 
+        tab_novo_cli, tab_editar_cli = st.tabs(["➕ Novo Cliente", "✏️ Editar Cliente"])
+        
+        with tab_novo_cli:
+            st.subheader("Novo Cliente")
+            with st.form("form_cliente", clear_on_submit=True):
+                nome = st.text_input("Nome do Cliente*")
+                contato = st.text_input("Contato (Insta/WhatsApp)")
+                endereco = st.text_input("Endereço")
+                cidade = st.text_input("Cidade")
+                estado = st.text_input("Estado (Ex: SP)")
+                cep = st.text_input("CEP")
+                submit_cliente = st.form_submit_button("Salvar Cliente")
+                
+                if submit_cliente:
+                    if not nome:
+                        st.error("O campo Nome é obrigatório!")
+                    else:
+                        novo_c = Cliente(nome, contato, endereco, cidade, estado, cep)
+                        clientes.append(novo_c)
+                        db.salvar_clientes(clientes)
+                        st.success("Cliente salvo com sucesso!")
+                        st.rerun() 
+                        
+        with tab_editar_cli:
+            st.subheader("Atualizar Cliente")
+            if not clientes:
+                st.info("Nenhum cliente cadastrado para editar.")
+            else:
+                opcoes_clientes = [f"{c.id_cliente} - {c.nome}" for c in clientes]
+                cliente_selecionado_str = st.selectbox("Selecione o Cliente para alterar:", opcoes_clientes)
+                
+                if cliente_selecionado_str:
+                    id_alvo = cliente_selecionado_str.split(" - ")[0]
+                    c_alvo = next(c for c in clientes if str(c.id_cliente) == id_alvo)
                     
+                    edit_nome = st.text_input("Nome*", value=c_alvo.nome, key=f"edit_nome_cli_{c_alvo.id_cliente}")
+                    edit_contato = st.text_input("Contato", value=c_alvo.contato, key=f"edit_contato_cli_{c_alvo.id_cliente}")
+                    edit_endereco = st.text_input("Endereço", value=getattr(c_alvo, 'endereco', ''), key=f"edit_end_cli_{c_alvo.id_cliente}")
+                    edit_cidade = st.text_input("Cidade", value=getattr(c_alvo, 'cidade', ''), key=f"edit_cid_cli_{c_alvo.id_cliente}")
+                    edit_estado = st.text_input("Estado", value=getattr(c_alvo, 'estado', ''), key=f"edit_est_cli_{c_alvo.id_cliente}")
+                    edit_cep = st.text_input("CEP", value=getattr(c_alvo, 'cep', ''), key=f"edit_cep_cli_{c_alvo.id_cliente}")
+                    
+                    if st.button("Salvar Alterações", type="primary", key=f"btn_salvar_cli_{c_alvo.id_cliente}"):
+                        if not edit_nome:
+                            st.error("O nome não pode ficar em branco!")
+                        else:
+                            c_alvo.nome = edit_nome
+                            c_alvo.contato = edit_contato
+                            c_alvo.endereco = edit_endereco
+                            c_alvo.cidade = edit_cidade
+                            c_alvo.estado = edit_estado
+                            c_alvo.cep = edit_cep
+                            
+                            db.salvar_clientes(clientes)
+                            st.success(f"Cliente '{c_alvo.nome}' atualizado com sucesso!")
+                            st.rerun()
+
     with col2:
         st.subheader("Clientes Cadastrados")
         if not clientes:
             st.info("Nenhum cliente cadastrado.")
         else:
-            dados = [{"ID": c.id_cliente, "Nome": c.nome, "Contato": c.contato, "Local": f"{c.cidade}/{c.estado}"} for c in clientes]
+            dados = [{"ID": c.id_cliente, "Nome": c.nome, "Contato": c.contato, "Local": f"{getattr(c, 'cidade', '')}/{getattr(c, 'estado', '')}"} for c in clientes]
             st.dataframe(dados, use_container_width=True)
 
+
 # ==========================================
-# ABA 2: ESTOQUE DE MATERIAIS
+# FUNÇÃO: ABA DE ESTOQUE
 # ==========================================
-with aba_estoque:
+def renderizar_estoque():
+    st.title("🧶 Estoque de Materiais")
     materiais_em_falta = [m for m in estoque.values() if m.quantidade <= 0]
     materiais_acabando = [m for m in estoque.values() if m.quantidade == 1]
     
@@ -168,10 +290,12 @@ with aba_estoque:
                 dados_est = [{"SKU": m.sku, "Tipo": m.tipo, "Nome": m.nome, "Cor": f"{m.cor} #{m.num_cor}", "Qtd": m.quantidade, "Custo Unit": f"R$ {m.obter_custo_unitario():.2f}"} for m in materiais_filtrados]
                 st.dataframe(dados_est, use_container_width=True)
 
+
 # ==========================================
-# ABA 3: PATTERNS (RECEITAS)
+# FUNÇÃO: ABA DE PATTERNS
 # ==========================================
-with aba_patterns:
+def renderizar_patterns():
+    st.title("📝 Patterns (Receitas)")
     col1, col2 = st.columns([1, 2])
     
     with col1:
@@ -180,7 +304,7 @@ with aba_patterns:
         with tab_novo:
             st.subheader("Cadastrar Pattern")
             nome_pat = st.text_input("Nome do Amigurumi* (Ex: Chopper)")
-            obs = st.text_area("Observações (Ex: na carreira 4 não são 21 pontos, são 19)")
+            obs = st.text_area("Observações (Ex: na carreira 4 não são 19 pontos)")
             
             st.markdown("📝 **Materiais Necessários**")
             quantidades = {}
@@ -266,20 +390,15 @@ with aba_patterns:
 
     with col2:
         st.subheader("Patterns Cadastrados")
-        
-        # --- NOVO: SISTEMA DE BUSCA DE PATTERNS ---
         termo_busca_pat = st.text_input("🔍 Buscar receita por Nome ou SKU:", "").strip().lower()
         
         if not patterns:
             st.info("Nenhum pattern cadastrado.")
         else:
-            # Filtra a lista de receitas com base no que foi digitado
             patterns_filtrados = []
             for p in patterns:
-                # Verifica se o termo está no nome da receita ou em algum dos SKUs salvos nela
                 match_nome = termo_busca_pat in p.nome.lower()
                 match_sku = any(termo_busca_pat in sku.lower() for sku in p.skus_necessarios)
-                
                 if not termo_busca_pat or match_nome or match_sku:
                     patterns_filtrados.append(p)
             
@@ -300,11 +419,12 @@ with aba_patterns:
                         else:
                             st.write("Nenhum material base listado.")
 
+
 # ==========================================
-# ABA 4: PEDIDOS
+# FUNÇÃO: ABA DE PEDIDOS (COM FILTROS)
 # ==========================================
-with aba_pedidos:
-    st.subheader("Gestão de Pedidos")
+def renderizar_pedidos():
+    st.title("📦 Gestão de Pedidos")
     
     with st.expander("➕ CRIAR NOVO PEDIDO", expanded=False):
         if not clientes or not patterns:
@@ -313,7 +433,6 @@ with aba_pedidos:
             with st.form("form_pedido", clear_on_submit=True):
                 cliente_sel = st.selectbox("Selecione o Cliente", clientes, format_func=lambda c: f"{c.nome} (ID: {c.id_cliente})")
                 pattern_sel = st.selectbox("Selecione o Pattern", patterns, format_func=lambda p: p.nome)
-                
                 preco_venda = st.number_input("Preço Cobrado do Cliente (R$)", min_value=0.0, step=5.0)
                 
                 submit_ped = st.form_submit_button("Gerar Pedido em Espera")
@@ -327,76 +446,186 @@ with aba_pedidos:
     if not pedidos:
         st.info("Nenhum pedido registrado.")
     else:
-        pedidos_espera = [p for p in pedidos if p.status == "Em espera"]
-        pedidos_fin = [p for p in pedidos if p.status != "Em espera"]
+        # --- NOVO: SISTEMA DE BUSCA E FILTROS ---
+        st.markdown("### 🔍 Filtros de Busca")
+        col_filtro1, col_filtro2 = st.columns([2, 1])
         
-        col_ped1, col_ped2 = st.columns(2)
-        
-        with col_ped1:
-            st.markdown("### ⏳ Em Espera")
-            for p in pedidos_espera:
-                with st.container(border=True):
-                    st.markdown(f"**ID:** {p.id_pedido} | **{p.pattern.nome}**")
-                    st.write(f"👤 Cliente: {p.cliente.nome}")
-                    st.write(f"💵 Preço Combinado: **R$ {p.preco_venda:.2f}**")
-                    
-                    fios_do_pattern = [sku for sku in p.pattern.skus_necessarios if sku in estoque and estoque[sku].tipo.lower() == "fio"]
-                    
-                    if not fios_do_pattern:
-                        st.warning("Nenhum 'Fio' foi encontrado na receita para pesagem.")
-                        if st.button("Finalizar Pedido Sem Fios", key=f"btn_fin_{p.id_pedido}"):
-                            p.status = "Finalizado"
-                            db.salvar_pedidos(pedidos)
-                            st.rerun()
-                    else:
-                        with st.form(f"form_fin_{p.id_pedido}"):
-                            st.write("Pesagem dos Fios (em gramas):")
-                            pesos_temp_ini = {}
-                            pesos_temp_fin = {}
-                            
-                            for sku in fios_do_pattern:
-                                fio = estoque[sku]
-                                st.markdown(f"🧶 **{fio.nome} ({fio.cor})**")
-                                c1, c2 = st.columns(2)
-                                with c1:
-                                    pesos_temp_ini[sku] = st.number_input("Início (g)", min_value=0.0, step=1.0, key=f"ini_{p.id_pedido}_{sku}")
-                                with c2:
-                                    pesos_temp_fin[sku] = st.number_input("Fim (g)", min_value=0.0, step=1.0, key=f"fim_{p.id_pedido}_{sku}")
-                                    
-                            if st.form_submit_button("Registrar e Finalizar"):
-                                for sku in fios_do_pattern:
-                                    p.registrar_peso_fio(sku, pesos_temp_ini[sku], pesos_temp_fin[sku])
-                                
+        with col_filtro1:
+            termo_busca_ped = st.text_input("Buscar por nome do Cliente ou Pattern:", "").strip().lower()
+        with col_filtro2:
+            filtro_status = st.selectbox("Filtrar por Status:", ["Todos", "Em espera", "Finalizado"])
+            
+        # Aplica a lógica de filtragem na lista
+        pedidos_filtrados = []
+        for p in pedidos:
+            match_texto = not termo_busca_ped or (termo_busca_ped in p.cliente.nome.lower()) or (termo_busca_ped in p.pattern.nome.lower())
+            match_status = (filtro_status == "Todos") or (p.status == filtro_status)
+            
+            if match_texto and match_status:
+                pedidos_filtrados.append(p)
+
+        st.divider()
+
+        if not pedidos_filtrados:
+            st.warning("Nenhum pedido encontrado com esses filtros.")
+        else:
+            pedidos_espera = [p for p in pedidos_filtrados if p.status == "Em espera"]
+            pedidos_fin = [p for p in pedidos_filtrados if p.status != "Em espera"]
+            
+            st.markdown("### 📋 Visão Geral")
+            dados_tabela = [{
+                "ID": p.id_pedido, 
+                "Cliente": p.cliente.nome, 
+                "Pattern": p.pattern.nome,
+                "Valor (R$)": f"{p.preco_venda:.2f}",
+                "Lucro (R$)": f"{(p.preco_venda - p.calcular_custo_total_materiais(estoque)):.2f}" if p.status == "Finalizado" else "-",
+                "Status": p.status
+            } for p in pedidos_filtrados]
+            st.dataframe(dados_tabela, use_container_width=True, hide_index=True)
+            
+            st.divider()
+            
+            col_ped1, col_ped2 = st.columns(2)
+            
+            with col_ped1:
+                st.markdown("### ⏳ Em Espera")
+                if not pedidos_espera:
+                    st.info("Nenhum pedido em espera nesta seleção.")
+                for p in pedidos_espera:
+                    with st.container(border=True):
+                        st.markdown(f"**ID:** {p.id_pedido} | **{p.pattern.nome}**")
+                        st.write(f"👤 Cliente: {p.cliente.nome}")
+                        st.write(f"💵 Preço Combinado: **R$ {p.preco_venda:.2f}**")
+                        
+                        fios_do_pattern = [sku for sku in p.pattern.skus_necessarios if sku in estoque and estoque[sku].tipo.lower() == "fio"]
+                        
+                        if not fios_do_pattern:
+                            st.warning("Nenhum 'Fio' foi encontrado na receita para pesagem.")
+                            if st.button("Finalizar Pedido Sem Fios", key=f"btn_fin_{p.id_pedido}"):
+                                p.status = "Finalizado"
                                 db.salvar_pedidos(pedidos)
-                                st.success("Pedido finalizado com sucesso!")
+                                st.rerun()
+                        else:
+                            with st.form(f"form_fin_{p.id_pedido}"):
+                                st.write("Pesagem dos Fios (em gramas):")
+                                pesos_temp_ini = {}
+                                pesos_temp_fin = {}
+                                
+                                for sku in fios_do_pattern:
+                                    fio = estoque[sku]
+                                    st.markdown(f"🧶 **{fio.nome} ({fio.cor})**")
+                                    c1, c2 = st.columns(2)
+                                    with c1:
+                                        pesos_temp_ini[sku] = st.number_input("Início (g)", min_value=0.0, step=1.0, key=f"ini_{p.id_pedido}_{sku}")
+                                    with c2:
+                                        pesos_temp_fin[sku] = st.number_input("Fim (g)", min_value=0.0, step=1.0, key=f"fim_{p.id_pedido}_{sku}")
+                                        
+                                if st.form_submit_button("Registrar e Finalizar"):
+                                    for sku in fios_do_pattern:
+                                        p.registrar_peso_fio(sku, pesos_temp_ini[sku], pesos_temp_fin[sku])
+                                    
+                                    db.salvar_pedidos(pedidos)
+                                    st.success("Pedido finalizado com sucesso!")
+                                    st.rerun()
+
+            with col_ped2:
+                st.markdown("### ✅ Finalizados")
+                if not pedidos_fin:
+                    st.info("Nenhum pedido finalizado nesta seleção.")
+                for p in pedidos_fin:
+                    with st.container(border=True):
+                        st.markdown(f"**ID:** {p.id_pedido} | **{p.pattern.nome}**")
+                        st.write(f"👤 Cliente: {p.cliente.nome}")
+                        
+                        st.markdown("**Consumo por Fio:**")
+                        for sku in p.pesos_iniciais.keys():
+                            nome_fio = estoque[sku].nome if sku in estoque else sku
+                            cor_fio = estoque[sku].cor if sku in estoque else ""
+                            st.write(f"- {nome_fio} ({cor_fio}): **{p.calcular_uso_fio(sku)}g**")
+                            
+                        custo_final = p.calcular_custo_total_materiais(estoque)
+                        lucro = p.preco_venda - custo_final
+                        
+                        st.write(f"💵 Preço de Venda: **R$ {p.preco_venda:.2f}**")
+                        st.write(f"📉 Custo Material: **R$ {custo_final:.2f}**")
+                        st.write(f"✨ **LUCRO LÍQUIDO:** **R$ {lucro:.2f}**")
+                        
+                        rastreio_atual = p.codigo_rastreio if p.codigo_rastreio else "Sem rastreio"
+                        st.write(f"🚚 Rastreio: **{rastreio_atual}**")
+                        
+                        with st.popover("Editar Rastreio"):
+                            novo_rastreio = st.text_input("Código", value=p.codigo_rastreio if p.codigo_rastreio else "", key=f"rast_{p.id_pedido}")
+                            if st.button("Salvar Rastreio", key=f"btn_rast_{p.id_pedido}"):
+                                p.atualizar_rastreio(novo_rastreio)
+                                db.salvar_pedidos(pedidos)
                                 st.rerun()
 
-        with col_ped2:
-            st.markdown("### ✅ Finalizados")
-            for p in pedidos_fin:
-                with st.container(border=True):
-                    st.markdown(f"**ID:** {p.id_pedido} | **{p.pattern.nome}**")
-                    st.write(f"👤 Cliente: {p.cliente.nome}")
-                    
-                    st.markdown("**Consumo por Fio:**")
-                    for sku in p.pesos_iniciais.keys():
-                        nome_fio = estoque[sku].nome if sku in estoque else sku
-                        cor_fio = estoque[sku].cor if sku in estoque else ""
-                        st.write(f"- {nome_fio} ({cor_fio}): **{p.calcular_uso_fio(sku)}g**")
-                        
-                    custo_final = p.calcular_custo_total_materiais(estoque)
-                    lucro = p.preco_venda - custo_final
-                    
-                    st.write(f"💵 Preço de Venda: **R$ {p.preco_venda:.2f}**")
-                    st.write(f"📉 Custo Material: **R$ {custo_final:.2f}**")
-                    st.write(f"✨ **LUCRO LÍQUIDO:** **R$ {lucro:.2f}**")
-                    
-                    rastreio_atual = p.codigo_rastreio if p.codigo_rastreio else "Sem rastreio"
-                    st.write(f"🚚 Rastreio: **{rastreio_atual}**")
-                    
-                    with st.popover("Editar Rastreio"):
-                        novo_rastreio = st.text_input("Código", value=p.codigo_rastreio if p.codigo_rastreio else "", key=f"rast_{p.id_pedido}")
-                        if st.button("Salvar Rastreio", key=f"btn_rast_{p.id_pedido}"):
-                            p.atualizar_rastreio(novo_rastreio)
-                            db.salvar_pedidos(pedidos)
-                            st.rerun()
+
+# ==========================================
+# ESTRUTURA PRINCIPAL E NAVEGAÇÃO LATERAL
+# ==========================================
+def main():
+    # CSS opcional para ajustar o espaçamento do topo da barra lateral
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] { padding-top: 1rem; }
+        </style>
+        """, unsafe_allow_html=True
+    )
+
+    with st.sidebar:
+        # 1. Logo e Boas-vindas centralizados e estilizados
+        try:
+            st.image("logo.PNG", use_container_width=True)
+        except Exception:
+            st.markdown("<h1 style='text-align: center; color: #FF4B4B;'>🧶 Namigurumi</h1>", unsafe_allow_html=True)
+            
+        st.markdown("<h3 style='text-align: center; margin-top: -10px;'>Olá, Ana Carolina! ✨</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: gray; font-size: 14px;'>Gerenciador de Ateliê</p>", unsafe_allow_html=True)
+        
+        st.divider()
+        
+        # 2. Menu mais limpo (sem o título padrão)
+        menu = st.radio(
+            "Navegação", 
+            ["📦 Pedidos", "👥 Clientes", "🧶 Estoque", "📝 Patterns", "📊 Analytics / BI"],
+            label_visibility="collapsed"
+        )
+        
+        st.divider()
+        
+        # 3. Mini-Painel de Status Rápido Dinâmico
+        st.markdown("#### ⚡ Status Rápido")
+        
+        pedidos_espera = len([p for p in pedidos if p.status == "Em espera"])
+        estoque_alerta = len([m for m in estoque.values() if m.quantidade <= 1])
+        
+        if pedidos_espera > 0:
+            st.warning(f"⏳ {pedidos_espera} pedido(s) em espera")
+        else:
+            st.success("✅ Sem pedidos pendentes")
+            
+        if estoque_alerta > 0:
+            st.error(f"⚠️ {estoque_alerta} material(is) no fim")
+        else:
+            st.success("📦 Estoque abastecido")
+            
+        # 4. Rodapé personalizado
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: gray; font-size: 12px;'>Desenvolvido por <b>Ana Carolina</b> 💻</p>", unsafe_allow_html=True)
+
+    # Roteamento das Telas
+    if menu == "📦 Pedidos":
+        renderizar_pedidos()
+    elif menu == "👥 Clientes":
+        renderizar_clientes()
+    elif menu == "🧶 Estoque":
+        renderizar_estoque()
+    elif menu == "📝 Patterns":
+        renderizar_patterns()
+    elif menu == "📊 Analytics / BI":
+        renderizar_aba_bi()
+
+if __name__ == "__main__":
+    main()
