@@ -9,21 +9,54 @@ class DatabaseCSV:
         self.arquivo_pedidos = 'pedidos.csv'
         self.arquivo_patterns = 'patterns.csv'
     
-    def salvar_clientes(self, lista_clientes):
-        with open(self.arquivo_clientes, mode='w', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file)
-            writer.writerow(['ID_Cliente', 'Nome', 'Contato', 'Endereco', 'Cidade', 'Estado', 'CEP'])
-            for c in lista_clientes:
-                writer.writerow([c.id_cliente, c.nome, c.contato, c.endereco, c.cidade, c.estado, c.cep])
-                
+    def salvar_clientes(self, clientes):
+        with open(self.arquivo_clientes, mode='w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            
+            # Cabeçalho correto e padronizado
+            writer.writerow(['ID_Cliente', 'Nome', 'Contato', 'Endereco', 'Cidade', 'Estado', 'CEP', 'Email', 'Senha'])
+            
+            for c in clientes:
+                writer.writerow([
+                    c.id_cliente, 
+                    c.nome, 
+                    c.contato, 
+                    c.endereco, 
+                    c.cidade, 
+                    c.estado, 
+                    c.cep, 
+                    getattr(c, 'email', ''),   
+                    getattr(c, 'senha', '')    
+                ])
+
     def carregar_clientes(self):
         clientes = []
-        if not os.path.exists(self.arquivo_clientes): return clientes
+        if not os.path.exists(self.arquivo_clientes): 
+            return clientes
+            
         with open(self.arquivo_clientes, mode='r', encoding='utf-8') as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                clientes.append(Cliente(row.get('Nome', ''), row.get('Contato', ''), row.get('Endereco', ''),
-                                        row.get('Cidade', ''), row.get('Estado', ''), row.get('CEP', ''), row.get('ID_Cliente')))
+            reader = csv.reader(file)
+            cabecalho = next(reader, None)
+            
+            for linha in reader:
+                if not linha: 
+                    continue
+                    
+                # Extrai as informações de forma segura, verificando o tamanho da linha
+                id_cliente = linha[0]
+                nome = linha[1] if len(linha) > 1 else ""
+                contato = linha[2] if len(linha) > 2 else ""
+                endereco = linha[3] if len(linha) > 3 else ""
+                cidade = linha[4] if len(linha) > 4 else ""
+                estado = linha[5] if len(linha) > 5 else ""
+                cep = linha[6] if len(linha) > 6 else ""
+                email = linha[7] if len(linha) > 7 else ""
+                senha = linha[8] if len(linha) > 8 else ""
+                
+                c = Cliente(nome, contato, endereco, cidade, estado, cep, email=email, senha=senha)
+                c.id_cliente = id_cliente 
+                clientes.append(c)
+                
         return clientes
 
     def salvar_materiais(self, dicionario_materiais):
@@ -73,7 +106,6 @@ class DatabaseCSV:
     def salvar_pedidos(self, lista_pedidos):
         with open(self.arquivo_pedidos, mode='w', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
-            # Adicionado a coluna Preco_Venda
             writer.writerow(['ID_Pedido', 'ID_Cliente', 'Nome_Cliente', 'Nome_Pattern', 'Preco_Venda', 'Status', 'Codigo_Rastreio', 'Pesos_Iniciais', 'Pesos_Finais', 'Data_Criacao'])
             for p in lista_pedidos:
                 str_iniciais = "|".join([f"{k}:{v}" for k,v in p.pesos_iniciais.items()])
@@ -93,15 +125,19 @@ class DatabaseCSV:
         with open(self.arquivo_pedidos, mode='r', encoding='utf-8') as file:
             reader = csv.DictReader(file)
             for row in reader:
-                cliente = mapa_clientes.get(row['ID_Cliente'], Cliente(row['Nome_Cliente'], ""))
-                pattern = mapa_patterns.get(row['Nome_Pattern'], Pattern(row['Nome_Pattern'], []))
+                # TRAVA DE SEGURANÇA: Instancia o cliente temporário com todos os campos vazios necessários
+                cliente_padrao = Cliente(row.get('Nome_Cliente', 'Desconhecido'), "", "", "", "", "")
+                cliente = mapa_clientes.get(row.get('ID_Cliente'), cliente_padrao)
                 
-                # Passa o preco_venda na recriação do pedido
+                pattern_padrao = Pattern(row.get('Nome_Pattern', 'Desconhecido'), [])
+                pattern = mapa_patterns.get(row.get('Nome_Pattern'), pattern_padrao)
+                
                 preco_venda_salvo = float(row.get('Preco_Venda', 0.0))
-                p = Pedido(cliente, pattern, preco_venda_salvo, row['ID_Pedido'])
+                p = Pedido(cliente, pattern, preco_venda_salvo, row.get('ID_Pedido'))
                 
-                p.status = row['Status']
-                p.codigo_rastreio = row['Codigo_Rastreio'] if row['Codigo_Rastreio'] != 'None' and row['Codigo_Rastreio'] else None
+                p.status = row.get('Status', 'Em espera')
+                codigo_rastreio = row.get('Codigo_Rastreio')
+                p.codigo_rastreio = codigo_rastreio if codigo_rastreio != 'None' and codigo_rastreio else None
                 
                 str_ini = row.get('Pesos_Iniciais', '')
                 if str_ini:

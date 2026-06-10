@@ -19,15 +19,18 @@ class Material:
         return self.preco_custo / self.rendimento_base
 
 class Cliente:
-    def __init__(self, nome, contato, endereco="", cidade="", estado="", cep="", id_cliente=None):
-        self.id_cliente = id_cliente if id_cliente else f"CLI-{str(uuid.uuid4())[:6].upper()}"
+    def __init__(self, nome, contato, endereco, cidade, estado, cep, email="", senha=""):
+        # 👇 GERA O ID AUTOMATICAMENTE PARA CADA CLIENTE NOVO
+        self.id_cliente = str(uuid.uuid4())[:8].upper()
+        
         self.nome = nome
         self.contato = contato
         self.endereco = endereco
         self.cidade = cidade
         self.estado = estado
         self.cep = cep
-        self.historico_pedidos = []
+        self.email = email
+        self.senha = senha
 
 class Pattern:
     def __init__(self, nome, skus_necessarios, quantidades_estimadas=None, observacoes=""):
@@ -37,7 +40,6 @@ class Pattern:
         self.observacoes = observacoes
 
 class Pedido:
-    # Adicionado o preco_venda aqui!
     def __init__(self, cliente, pattern, preco_venda=0.0, id_pedido=None):
         self.id_pedido = id_pedido if id_pedido else f"PED-{str(uuid.uuid4())[:6].upper()}"
         self.cliente = cliente
