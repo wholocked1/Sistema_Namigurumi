@@ -33,11 +33,12 @@ class Cliente:
         self.senha = senha
 
 class Pattern:
-    def __init__(self, nome, skus_necessarios, quantidades_estimadas=None, observacoes=""):
+    def __init__(self, nome, skus_necessarios, quantidades_estimadas=None, observacoes="", imagem=""):
         self.nome = nome
         self.skus_necessarios = skus_necessarios
         self.quantidades_estimadas = quantidades_estimadas if quantidades_estimadas else {}
         self.observacoes = observacoes
+        self.imagem = imagem  # Novo campo: pode ser um link ou caminho local (ex: "imagens/chopper.png")
 
 class Pedido:
     def __init__(self, cliente, pattern, preco_venda=0.0, id_pedido=None):
@@ -79,3 +80,4 @@ class Pedido:
                 custo_total += qtd_usada * material.obter_custo_unitario()
                 
         return round(custo_total, 2)
+

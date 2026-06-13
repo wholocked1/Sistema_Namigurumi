@@ -29,6 +29,48 @@ estoque = db.carregar_materiais()
 patterns = db.carregar_patterns()
 pedidos = db.carregar_pedidos(clientes, patterns)
 
+# ==========================================
+# FUNÇÃO: ENVIAR RELATÓRIO DE ESTOQUE
+# ==========================================
+def enviar_relatorio_estoque():
+    EMAIL_ORIGEM = os.getenv("EMAIL_BOT")
+    SENHA_APP = os.getenv("SENHA_BOT")
+    EMAIL_DESTINO = os.getenv("EMAIL_BOT") 
+    
+    if not EMAIL_ORIGEM or not SENHA_APP:
+        return False, "Credenciais não configuradas no arquivo .env!"
+        
+    materiais_em_falta = [m for m in estoque.values() if m.quantidade <= 0]
+    materiais_acabando = [m for m in estoque.values() if m.quantidade == 1]
+    
+    if not materiais_em_falta and not materiais_acabando:
+        return False, "Seu estoque está 100% abastecido, não há nada para comprar!"
+        
+    corpo = "⚠️ RELATÓRIO DE COMPRAS - NAMIGURUMI ⚠️\n\n"
+    if materiais_em_falta:
+        corpo += "🔴 ESGOTADOS:\n"
+        for m in materiais_em_falta:
+            corpo += f"- {m.sku}: {m.nome} ({m.cor})\n"
+            
+    if materiais_acabando:
+        corpo += "\n🟡 ACABANDO (Apenas 1 unidade):\n"
+        for m in materiais_acabando:
+            corpo += f"- {m.sku}: {m.nome} ({m.cor})\n"
+            
+    msg = EmailMessage()
+    msg.set_content(corpo)
+    msg['Subject'] = "📦 Namigurumi: Sua Lista de Compras do Estoque"
+    msg['From'] = EMAIL_ORIGEM
+    msg['To'] = EMAIL_DESTINO
+    
+    try:
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        server.login(EMAIL_ORIGEM, SENHA_APP)
+        server.send_message(msg)
+        server.quit()
+        return True, "E-mail enviado com sucesso!"
+    except Exception as e:
+        return False, f"Erro ao enviar: {e}"
 
 # ==========================================
 # FUNÇÃO: ENVIAR E-MAIL (NOTIFICAÇÃO)
@@ -118,44 +160,90 @@ Temos ótimas notícias! O seu amigurumi feito sob encomenda, **{pattern_nome}**
         return False
 
 # ==========================================
-# TELAS DO CLIENTE (FRONT-END)
+# FUNÇÃO: DETALHE DO PRODUTO (TELA DE PRODUTO)
+# ==========================================
+def renderizar_tela_produto():
+    p = st.session_state.produto_selecionado
+    
+    if st.button("⬅️ Voltar para o Catálogo"):
+        st.session_state.produto_selecionado = None
+        st.rerun()
+        
+    st.divider()
+    
+    col_img, col_info = st.columns([1, 1])
+    
+    with col_img:
+        # 👇 USO DO GETATTR PARA EVITAR O ERRO
+        img_val = getattr(p, 'imagem', '')
+        link_imagem = img_val if img_val else "https://placehold.co/600x600?text=Sem+Foto"
+        
+        try:
+            st.image(link_imagem, use_container_width=True)
+        except Exception:
+            st.image("https://placehold.co/600x600?text=Erro+ao+Carregar+Imagem", use_container_width=True)
+            
+    with col_info:
+        st.markdown(f"# 🧶 {p.nome}")
+        st.markdown("### ✨ Detalhes do Produto")
+        st.write(getattr(p, 'observacoes', "Peça artesanal produzida manualmente com fios de alta qualidade e acabamento impecável."))
+        
+        st.divider()
+        st.markdown("##### 📦 Condições de Encomenda:")
+        st.caption("• O valor final e o prazo de entrega serão combinados diretamente via WhatsApp.")
+        st.caption("• Produção totalmente personalizada conforme sua preferência de cores.")
+        st.divider()
+        
+        if st.session_state.perfil != 'cliente':
+            st.button("Faça login para fazer sua encomenda", disabled=True, use_container_width=True)
+        else:
+            qtd = st.number_input("Quantidade desejada:", min_value=1, step=1, value=1, key=f"qtd_detalhe_{p.nome}")
+            
+            if st.button("🛍️ Adicionar ao Carrinho", type="primary", use_container_width=True):
+                st.session_state.carrinho_cliente.append({
+                    'pattern': p,
+                    'quantidade': qtd
+                })
+                st.success(f"🎉 {qtd}x {p.nome} adicionado(s) ao carrinho!")
+                st.session_state.produto_selecionado = None
+                st.rerun()
+
+
+# ==========================================
+# FUNÇÃO: CATÁLOGO GERAL DE PRODUTOS
 # ==========================================
 def renderizar_catalogo():
-    st.markdown("<h1 style='text-align: center; color: #FF4B4B;'>🧶 Bem-vindo(a) à Namigurumi!</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: gray;'>Explore nosso catálogo e faça sua encomenda.</p>", unsafe_allow_html=True)
-    st.divider()
-
-    if not patterns:
-        st.info("Nosso catálogo está sendo atualizado. Volte em breve!")
-        return
-
-    # --- INICIALIZA O CARRINHO DO CLIENTE ---
     if "carrinho_cliente" not in st.session_state:
         st.session_state.carrinho_cliente = []
-        
+    if "produto_selecionado" not in st.session_state:
+        st.session_state.produto_selecionado = None
+
+    if st.session_state.produto_selecionado is not None:
+        renderizar_tela_produto()
+        return
+
+    st.markdown("<h1 style='text-align: center; color: #FF4B4B;'>🧶 Bem-vindo(a) à Namigurumi!</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: gray;'>Explore nosso catálogo e encomende peças exclusivas.</p>", unsafe_allow_html=True)
+    st.divider()
+
     if "compra_finalizada" in st.session_state and st.session_state.compra_finalizada:
         cliente_logado = st.session_state.usuario_logado
         st.success(f"🎉 Pedido recebido! Em breve a Ana entrará em contato pelo WhatsApp {cliente_logado.contato}.")
         st.balloons()
         st.session_state.compra_finalizada = False
 
-    # --- EXIBE O CARRINHO SE O CLIENTE TIVER ITENS ---
     if st.session_state.perfil == 'cliente' and st.session_state.carrinho_cliente:
         with st.expander("🛒 SEU CARRINHO DE ENCOMENDAS", expanded=True):
             st.subheader("Itens Selecionados")
-            
             for i, item in enumerate(st.session_state.carrinho_cliente):
                 col_it1, col_it2, col_it3 = st.columns([3, 1, 1])
                 col_it1.markdown(f"🧶 **{item['pattern'].nome}**")
                 col_it2.write(f"Qtd: **{item['quantidade']}**")
-                
                 if col_it3.button("Remover", key=f"rem_cli_{i}"):
                     st.session_state.carrinho_cliente.pop(i)
                     st.rerun()
             
             st.divider()
-            st.markdown("*(O valor final e prazo de entrega de todos os itens serão combinados via mensagem!)*")
-            
             if st.button("✅ Enviar Encomenda Completa", type="primary", use_container_width=True):
                 cliente_logado = st.session_state.usuario_logado
                 itens_resumo = []
@@ -166,15 +254,13 @@ def renderizar_catalogo():
                         novo_pedido = Pedido(cliente=cliente_logado, pattern=item['pattern'], preco_venda=0.0)
                         pedidos.append(novo_pedido)
                     
-                    # Puxa a descrição longa se for um pedido personalizado para colocar no e-mail
                     detalhe = getattr(item['pattern'], 'descricao_completa', '')
                     if detalhe:
-                        itens_resumo.append(f"{qtd}x {item['pattern'].nome}\n   -> Detalhes do Cliente: {detalhe}")
+                        itens_resumo.append(f"{qtd}x {item['pattern'].nome}\n   -> Detalhes: {detalhe}")
                     else:
                         itens_resumo.append(f"{qtd}x {item['pattern'].nome}")
                     
                 db.salvar_pedidos(pedidos)
-                
                 resumo_str = "\n\n".join(itens_resumo)
                 avisar_ana_por_email(cliente_logado.nome, resumo_str, cliente_logado.contato)
                 
@@ -182,29 +268,34 @@ def renderizar_catalogo():
                 st.session_state.compra_finalizada = True
                 st.rerun()
 
-    # --- CATÁLOGO DE PRODUTOS ---
     st.subheader("Catálogo Disponível")
+    if not patterns:
+        st.info("Nosso catálogo está sendo atualizado. Volte em breve!")
+        return
+
     cols = st.columns(3)
-    
     for i, p in enumerate(patterns):
         with cols[i % 3]:
             with st.container(border=True):
-                st.markdown(f"### 🧶 {p.nome}")
-                st.write(getattr(p, 'observacoes', 'Amigurumi feito com muito carinho!'))
+                # 👇 USO DO GETATTR PARA EVITAR O ERRO
+                img_val = getattr(p, 'imagem', '')
+                link_mini = img_val if img_val else "https://placehold.co/400x300?text=Sem+Foto"
                 
-                if st.session_state.perfil != 'cliente':
-                    st.button("Faça login para pedir", key=f"btn_bloq_{i}", disabled=True, use_container_width=True)
-                else:
-                    qtd = st.number_input("Quantidade", min_value=1, step=1, value=1, key=f"qtd_cat_{i}")
-                    
-                    if st.button("➕ Adicionar", key=f"btn_pedir_{i}", use_container_width=True):
-                        st.session_state.carrinho_cliente.append({
-                            'pattern': p,
-                            'quantidade': qtd
-                        })
-                        st.rerun()
+                try:
+                    st.image(link_mini, use_container_width=True)
+                except Exception:
+                    st.image("https://placehold.co/400x300?text=Erro+Imagem", use_container_width=True)
+                
+                st.markdown(f"### {p.nome}")
+                
+                obs_val = getattr(p, 'observacoes', '')
+                resumo_obs = obs_val if len(obs_val) <= 60 else obs_val[:60] + "..."
+                st.write(resumo_obs if resumo_obs else "Amigurumi feito sob encomenda.")
+                
+                if st.button("🔍 Ver Detalhes", key=f"btn_detalhe_{i}", use_container_width=True, type="secondary"):
+                    st.session_state.produto_selecionado = p
+                    st.rerun()
 
-    # --- SEÇÃO DE PEDIDOS PERSONALIZADOS ---
     if st.session_state.perfil == 'cliente':
         st.divider()
         st.markdown("### ✨ Não encontrou o que procurava?")
@@ -217,21 +308,128 @@ def renderizar_catalogo():
                 if not desc_personalizada.strip():
                     st.error("Por favor, descreva a peça que deseja antes de adicionar!")
                 else:
-                    # Cria um título curtinho para o seu painel de ADM não ficar bagunçado
                     resumo = desc_personalizada[:30] + "..." if len(desc_personalizada) > 30 else desc_personalizada
-                    pat_temp = Pattern(nome=f"✨ Personalizado: {resumo}", skus_necessarios=[])
-                    
-                    # Salva a descrição completa de forma oculta para enviar por e-mail
+                    # Passando a imagem genérica para a peça personalizada
+                    pat_temp = Pattern(nome=f"✨ Personalizado: {resumo}", skus_necessarios=[], imagem="https://placehold.co/600x600?text=%E2%9C%A8+Personalizado")
                     pat_temp.descricao_completa = desc_personalizada 
                     
                     st.session_state.carrinho_cliente.append({
                         'pattern': pat_temp,
                         'quantidade': 1
                     })
-                    st.success("Peça personalizada adicionada ao seu carrinho! Suba a página para finalizar a encomenda.")
+                    st.success("Peça personalizada adicionada ao seu carrinho! Suba a página para finalizar.")
                     st.rerun()
 
+# ==========================================
+# FUNÇÃO: CATÁLOGO GERAL DE PRODUTOS
+# ==========================================
+def renderizar_catalogo():
+    if "carrinho_cliente" not in st.session_state:
+        st.session_state.carrinho_cliente = []
+    if "produto_selecionado" not in st.session_state:
+        st.session_state.produto_selecionado = None
 
+    if st.session_state.produto_selecionado is not None:
+        renderizar_tela_produto()
+        return
+
+    st.markdown("<h1 style='text-align: center; color: #FF4B4B;'>🧶 Bem-vindo(a) à Namigurumi!</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: gray;'>Explore nosso catálogo e encomende peças exclusivas.</p>", unsafe_allow_html=True)
+    st.divider()
+
+    if "compra_finalizada" in st.session_state and st.session_state.compra_finalizada:
+        cliente_logado = st.session_state.usuario_logado
+        st.success(f"🎉 Pedido recebido! Em breve a Ana entrará em contato pelo WhatsApp {cliente_logado.contato}.")
+        st.balloons()
+        st.session_state.compra_finalizada = False
+
+    if st.session_state.perfil == 'cliente' and st.session_state.carrinho_cliente:
+        with st.expander("🛒 SEU CARRINHO DE ENCOMENDAS", expanded=True):
+            st.subheader("Itens Selecionados")
+            for i, item in enumerate(st.session_state.carrinho_cliente):
+                col_it1, col_it2, col_it3 = st.columns([3, 1, 1])
+                col_it1.markdown(f"🧶 **{item['pattern'].nome}**")
+                col_it2.write(f"Qtd: **{item['quantidade']}**")
+                if col_it3.button("Remover", key=f"rem_cli_{i}"):
+                    st.session_state.carrinho_cliente.pop(i)
+                    st.rerun()
+            
+            st.divider()
+            if st.button("✅ Enviar Encomenda Completa", type="primary", use_container_width=True):
+                cliente_logado = st.session_state.usuario_logado
+                itens_resumo = []
+                
+                for item in st.session_state.carrinho_cliente:
+                    qtd = item['quantidade']
+                    for _ in range(qtd):
+                        novo_pedido = Pedido(cliente=cliente_logado, pattern=item['pattern'], preco_venda=0.0)
+                        pedidos.append(novo_pedido)
+                    
+                    detalhe = getattr(item['pattern'], 'descricao_completa', '')
+                    if detalhe:
+                        itens_resumo.append(f"{qtd}x {item['pattern'].nome}\n   -> Detalhes: {detalhe}")
+                    else:
+                        itens_resumo.append(f"{qtd}x {item['pattern'].nome}")
+                    
+                db.salvar_pedidos(pedidos)
+                resumo_str = "\n\n".join(itens_resumo)
+                avisar_ana_por_email(cliente_logado.nome, resumo_str, cliente_logado.contato)
+                
+                st.session_state.carrinho_cliente = []
+                st.session_state.compra_finalizada = True
+                st.rerun()
+
+    st.subheader("Catálogo Disponível")
+    if not patterns:
+        st.info("Nosso catálogo está sendo atualizado. Volte em breve!")
+        return
+
+    cols = st.columns(3)
+    for i, p in enumerate(patterns):
+        with cols[i % 3]:
+            with st.container(border=True):
+                # 👇 AQUI ESTÁ A CORREÇÃO BLINDADA COM GETATTR
+                img_val = getattr(p, 'imagem', '')
+                link_mini = img_val if img_val else "https://placehold.co/400x300?text=Sem+Foto"
+                
+                try:
+                    st.image(link_mini, use_container_width=True)
+                except Exception:
+                    st.image("https://placehold.co/400x300?text=Erro+Imagem", use_container_width=True)
+                
+                st.markdown(f"### {p.nome}")
+                
+                obs_val = getattr(p, 'observacoes', '')
+                resumo_obs = obs_val if len(obs_val) <= 60 else obs_val[:60] + "..."
+                st.write(resumo_obs if resumo_obs else "Amigurumi feito sob encomenda.")
+                
+                if st.button("🔍 Ver Detalhes", key=f"btn_detalhe_{i}", use_container_width=True, type="secondary"):
+                    st.session_state.produto_selecionado = p
+                    st.rerun()
+
+    if st.session_state.perfil == 'cliente':
+        st.divider()
+        st.markdown("### ✨ Não encontrou o que procurava?")
+        with st.container(border=True):
+            st.write("**Quer uma peça que não foi listada no catálogo?**")
+            st.write("Descreva o que você quer para que seja analisada a viabilidade de realizar a sua peça exclusiva.")
+            desc_personalizada = st.text_area("Descreva detalhes como personagem, tamanho, cores, referências, etc.")
+            
+            if st.button("➕ Adicionar Pedido Personalizado ao Carrinho"):
+                if not desc_personalizada.strip():
+                    st.error("Por favor, descreva a peça que deseja antes de adicionar!")
+                else:
+                    resumo = desc_personalizada[:30] + "..." if len(desc_personalizada) > 30 else desc_personalizada
+                    pat_temp = Pattern(nome=f"✨ Personalizado: {resumo}", skus_necessarios=[], imagem="https://placehold.co/600x600?text=%E2%9C%A8+Personalizado")
+                    pat_temp.descricao_completa = desc_personalizada 
+                    
+                    st.session_state.carrinho_cliente.append({
+                        'pattern': pat_temp,
+                        'quantidade': 1
+                    })
+                    st.success("Peça personalizada adicionada ao seu carrinho! Suba a página para finalizar.")
+                    st.rerun()
+                    
 # ==========================================
 # FUNÇÃO: MEUS PEDIDOS (CLIENTE)
 # ==========================================
@@ -421,10 +619,13 @@ def renderizar_clientes():
             st.dataframe(dados, use_container_width=True)
 
 
+# ==========================================
+# FUNÇÃO: ABA DE ESTOQUE (COM BOTÃO DE E-MAIL)
+# ==========================================
 def renderizar_estoque():
     st.title("🧶 Estoque de Materiais")
-    materiais_em_falta = [m for m in estoque.values() if m.quantidade <= 0]
-    materiais_acabando = [m for m in estoque.values() if m.quantidade == 1]
+    materiais_em_falta = [m for m in estoque.values() if m.quantidade <= 0 or (m.peso_gramas is not None and m.peso_gramas <= 0)]
+    materiais_acabando = [m for m in estoque.values() if m.quantidade == 1 or (m.peso_gramas is not None and 0 < m.peso_gramas <= 15)]
     
     if materiais_em_falta or materiais_acabando:
         resumo_alerta = f"⚠️ **Lista de Compras:** {len(materiais_em_falta)} materiais esgotados e {len(materiais_acabando)} acabando. Clique aqui para expandir!"
@@ -435,6 +636,14 @@ def renderizar_estoque():
             for m in materiais_acabando:
                 dados_compras.append({"Status": "🟡 Acabando", "SKU": m.sku, "Material": m.nome, "Cor": f"{m.cor} #{m.num_cor}"})
             st.dataframe(dados_compras, use_container_width=True)
+            
+            # 👇 NOVO BOTÃO: Envia o relatório gerado diretamente para o seu e-mail do .env
+            if st.button("📧 Enviar Lista de Compras para o meu E-mail", type="primary", use_container_width=True):
+                sucesso, mensagem = enviar_relatorio_estoque()
+                if sucesso:
+                    st.success(mensagem)
+                else:
+                    st.error(mensagem)
     else:
         st.success("✅ Seu estoque está saudável! Nenhum material esgotado ou acabando.")
         
@@ -464,7 +673,7 @@ def renderizar_estoque():
                     elif sku in estoque:
                         st.error("Esse SKU já existe! Use a aba 'Editar Material' para atualizá-lo.")
                     else:
-                        novo_m = Material(sku, tipo, nome_mat, cor, num_cor, quantidade, peso if peso>0 else None, preco, rendimento)
+                        novo_m = Material(sku, tipo, nome_mat, cor, num_cor, quantidade, peso if peso > 0 else None, preco, rendimento)
                         estoque[sku] = novo_m
                         db.salvar_materiais(estoque)
                         st.success("Material adicionado ao estoque!")
@@ -526,10 +735,24 @@ def renderizar_estoque():
             if not materiais_filtrados:
                 st.warning("Nenhum material encontrado com esse termo.")
             else:
-                dados_est = [{"SKU": m.sku, "Tipo": m.tipo, "Nome": m.nome, "Cor": f"{m.cor} #{m.num_cor}", "Qtd": m.quantidade, "Custo Unit": f"R$ {m.obter_custo_unitario():.2f}"} for m in materiais_filtrados]
+                # Exibe a tabela atualizada mostrando as quantidades e os pesos atuais em tempo real
+                dados_est = [
+                    {
+                        "SKU": m.sku, 
+                        "Tipo": m.tipo, 
+                        "Nome": m.nome, 
+                        "Cor": f"{m.cor} #{m.num_cor}", 
+                        "Qtd (Unid)": m.quantidade,
+                        "Peso Atual (g)": f"{m.peso_gramas:.1f}g" if m.peso_gramas is not None else "-",
+                        "Custo Unit": f"R$ {m.obter_custo_unitario():.2f}"
+                    } for m in materiais_filtrados
+                ]
                 st.dataframe(dados_est, use_container_width=True)
 
 
+# ==========================================
+# FUNÇÃO: GERENCIAR PATTERNS (ADMIN)
+# ==========================================
 def renderizar_patterns():
     st.title("📝 Patterns (Receitas)")
     col1, col2 = st.columns([1, 2])
@@ -541,6 +764,10 @@ def renderizar_patterns():
             st.subheader("Cadastrar Pattern")
             nome_pat = st.text_input("Nome do Amigurumi* (Ex: Chopper)")
             obs = st.text_area("Observações", placeholder="Ex: Atenção - na carreira 4 não são 21 pontos, são 19.")
+            
+            st.markdown("📸 **Imagem do Produto**")
+            imagem_upload = st.file_uploader("Upload da Imagem (Do seu computador)", type=["png", "jpg", "jpeg"], key="upload_novo")
+            imagem_link = st.text_input("OU Link da Imagem (URL da internet)", placeholder="https://exemplo.com/foto.jpg")
             
             st.markdown("📝 **Materiais Necessários**")
             quantidades = {}
@@ -564,7 +791,21 @@ def renderizar_patterns():
                 if not nome_pat:
                     st.error("O nome do Pattern é obrigatório!")
                 else:
-                    novo_pattern = Pattern(nome_pat, skus_list, quantidades, obs)
+                    # Lógica para salvar a imagem
+                    caminho_final = ""
+                    if imagem_upload is not None:
+                        # Cria a pasta 'imagens' se ela não existir
+                        if not os.path.exists("imagens"):
+                            os.makedirs("imagens")
+                        
+                        # Salva o arquivo fisicamente na pasta
+                        caminho_final = f"imagens/{imagem_upload.name}"
+                        with open(caminho_final, "wb") as f:
+                            f.write(imagem_upload.getbuffer())
+                    elif imagem_link:
+                        caminho_final = imagem_link
+
+                    novo_pattern = Pattern(nome_pat, skus_list, quantidades, obs, imagem=caminho_final)
                     patterns.append(novo_pattern)
                     db.salvar_patterns(patterns)
                     st.success(f"Pattern '{nome_pat}' salvo com sucesso!")
@@ -581,7 +822,15 @@ def renderizar_patterns():
                 pat_alvo = next(p for p in patterns if p.nome == pattern_escolhido_nome)
                 
                 edit_nome = st.text_input("Nome", value=pat_alvo.nome, key=f"edit_nome_{pat_alvo.nome}")
-                edit_obs = st.text_area("Observações", value=pat_alvo.observacoes, key=f"edit_obs_{pat_alvo.nome}")
+                edit_obs = st.text_area("Observações", value=getattr(pat_alvo, 'observacoes', ''), key=f"edit_obs_{pat_alvo.nome}")
+                
+                st.markdown("📸 **Imagem do Produto**")
+                imagem_atual = getattr(pat_alvo, 'imagem', '')
+                if imagem_atual:
+                    st.caption(f"Imagem atual salva: {imagem_atual}")
+                
+                edit_upload = st.file_uploader("Substituir Imagem (Upload)", type=["png", "jpg", "jpeg"], key=f"edit_up_{pat_alvo.nome}")
+                edit_link = st.text_input("OU Substituir por Link", value=imagem_atual if "http" in imagem_atual else "", key=f"edit_link_{pat_alvo.nome}")
                 
                 edit_quantidades = {}
                 edit_skus_list = []
@@ -616,8 +865,20 @@ def renderizar_patterns():
                         if not edit_nome:
                             st.error("O nome não pode ficar em branco!")
                         else:
+                            # Lógica para atualizar a imagem
+                            caminho_editado = imagem_atual
+                            if edit_upload is not None:
+                                if not os.path.exists("imagens"):
+                                    os.makedirs("imagens")
+                                caminho_editado = f"imagens/{edit_upload.name}"
+                                with open(caminho_editado, "wb") as f:
+                                    f.write(edit_upload.getbuffer())
+                            elif edit_link:
+                                caminho_editado = edit_link
+
                             pat_alvo.nome = edit_nome
                             pat_alvo.observacoes = edit_obs
+                            pat_alvo.imagem = caminho_editado
                             pat_alvo.skus_necessarios = edit_skus_list
                             pat_alvo.quantidades_estimadas = edit_quantidades
                             
@@ -629,7 +890,7 @@ def renderizar_patterns():
                 with col_btn2:
                     with st.popover("🗑️ Eliminar Pattern"):
                         st.error("Aviso: Esta ação não pode ser desfeita!")
-                        st.write(f"Desejas mesmo eliminar permanentemente a receita '{pat_alvo.nome}'?")
+                        st.write(f"Deseja mesmo eliminar permanentemente a receita '{pat_alvo.nome}'?")
                         if st.button("Sim, confirmar exclusão", key=f"btn_del_{pat_alvo.nome}"):
                             patterns.remove(pat_alvo)
                             db.salvar_patterns(patterns)
@@ -655,7 +916,15 @@ def renderizar_patterns():
             else:
                 for p in patterns_filtrados:
                     with st.expander(f"🧶 {p.nome}"):
-                        st.write(f"**Observações:** {p.observacoes}")
+                        st.write(f"**Observações:** {getattr(p, 'observacoes', '')}")
+                        img_link = getattr(p, 'imagem', '')
+                        if img_link:
+                            # Mostra a miniatura da imagem no próprio painel da Admin
+                            try:
+                                st.image(img_link, width=150)
+                            except Exception:
+                                st.write("Imagem salva (Não foi possível exibir a prévia)")
+                            
                         if p.quantidades_estimadas:
                             st.write("**Materiais Base:**")
                             for s, q in p.quantidades_estimadas.items():
@@ -667,7 +936,7 @@ def renderizar_patterns():
                         else:
                             st.write("Nenhum material base listado.")
 
-
+            
 # ==========================================
 # FUNÇÃO: GESTÃO DE PEDIDOS (ADMIN)
 # ==========================================
@@ -797,7 +1066,7 @@ def renderizar_pedidos_admin():
                                     p.status = "Finalizado"
                                     db.salvar_pedidos(pedidos)
                                     
-                                    # 👇 NOTIFICAÇÃO 1: Pedido sem fios finalizado
+                                    # NOTIFICAÇÃO: Pedido sem fios finalizado
                                     email_cli = getattr(p.cliente, 'email', '')
                                     notificar_cliente_finalizado(email_cli, p.cliente.nome, p.pattern.nome, p.codigo_rastreio)
                                     
@@ -826,15 +1095,28 @@ def renderizar_pedidos_admin():
                                         
                                 if st.form_submit_button("Registrar e Finalizar"):
                                     for sku in fios_do_pattern:
-                                        p.registrar_peso_fio(sku, pesos_temp_ini[sku], pesos_temp_fin[sku])
+                                        ini = pesos_temp_ini[sku]
+                                        fin = pesos_temp_fin[sku]
+                                        
+                                        # 1. Registra os pesos no pedido
+                                        p.registrar_peso_fio(sku, ini, fin)
+                                        
+                                        # 2. Dá baixa no Estoque automaticamente!
+                                        peso_gasto = max(0.0, ini - fin)
+                                        if sku in estoque and estoque[sku].peso_gramas is not None:
+                                            estoque[sku].peso_gramas -= peso_gasto
+                                            if estoque[sku].peso_gramas < 0:
+                                                estoque[sku].peso_gramas = 0.0
                                     
+                                    # Salva ambos os bancos de dados
+                                    db.salvar_materiais(estoque)
                                     db.salvar_pedidos(pedidos)
                                     
-                                    # 👇 NOTIFICAÇÃO 2: Pedido com pesagem finalizado
+                                    # NOTIFICAÇÃO: Pedido com pesagem finalizado
                                     email_cli = getattr(p.cliente, 'email', '')
                                     notificar_cliente_finalizado(email_cli, p.cliente.nome, p.pattern.nome, p.codigo_rastreio)
                                     
-                                    st.success("Pedido finalizado com sucesso!")
+                                    st.success("Pedido finalizado e estoque atualizado com sucesso!")
                                     st.rerun()
                             
                             with st.popover("❌ Cancelar Pedido"):
@@ -877,7 +1159,7 @@ def renderizar_pedidos_admin():
                                     p.atualizar_rastreio(novo_rastreio)
                                     db.salvar_pedidos(pedidos)
                                     
-                                    # 👇 NOTIFICAÇÃO 3: Se você atualizar o rastreio depois, reenvia o email com o link/código
+                                    # NOTIFICAÇÃO: Se atualizar o rastreio, reenvia o email
                                     email_cli = getattr(p.cliente, 'email', '')
                                     notificar_cliente_finalizado(email_cli, p.cliente.nome, p.pattern.nome, novo_rastreio)
                                     

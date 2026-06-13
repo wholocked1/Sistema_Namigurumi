@@ -81,10 +81,12 @@ class DatabaseCSV:
     def salvar_patterns(self, lista_patterns):
         with open(self.arquivo_patterns, mode='w', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
-            writer.writerow(['Nome', 'Materiais', 'Observacoes'])
+            # Adicionada a coluna 'Imagem' no cabeçalho
+            writer.writerow(['Nome', 'Materiais', 'Observacoes', 'Imagem'])
             for p in lista_patterns:
                 mat_str = "|".join([f"{sku}:{qtd}" for sku, qtd in p.quantidades_estimadas.items()])
-                writer.writerow([p.nome, mat_str, p.observacoes])
+                # Salva o caminho ou link da imagem
+                writer.writerow([p.nome, mat_str, p.observacoes, getattr(p, 'imagem', '')])
 
     def carregar_patterns(self):
         patterns = []
@@ -92,15 +94,20 @@ class DatabaseCSV:
         with open(self.arquivo_patterns, mode='r', encoding='utf-8') as file:
             reader = csv.DictReader(file)
             for row in reader:
-                mat_str = row.get('Materiais', '')
-                quantidades, skus = {}, []
+                mat_str = row.get('Materials', '') or row.get('Materiais', '')
+                quantidades, skus = {}, []  # Variável criada com 'q'
                 if mat_str:
                     for item in mat_str.split('|'):
                         if ':' in item:
                             sku, qtd = item.split(':')
                             quantidades[sku] = float(qtd)
                             skus.append(sku)
-                patterns.append(Pattern(row['Nome'], skus, quantidades, row.get('Observacoes', '')))
+                
+                # Lê a coluna de imagem (se não existir no CSV antigo, define como vazio)
+                img = row.get('Imagem', '')
+                
+                
+                patterns.append(Pattern(row['Nome'], skus, quantidades, row.get('Observacoes', ''), imagem=img))
         return patterns
 
     def salvar_pedidos(self, lista_pedidos):
